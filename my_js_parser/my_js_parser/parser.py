@@ -22,45 +22,57 @@ from  lxml import etree
 import json 
 import quickjs
 import re
-def extract_all_json(script_text):
 
+def extract_all_json(script_text):
     json_list = []  # 存储提取的所有 JSON 对象
     start = -1  # 初始化起始位置
     open_braces = 0  # 追踪大括号的匹配情况
+    open_brackets = 0  # 追踪方括号的匹配情况
 
-    # 逐字符遍历整个字符串
-    for i, char in enumerate(script_text):
-        if char == '{':
-            if open_braces == 0:
-                start = i  # 记录第一个左大括号的位置
+    # 使用正则表达式匹配所有花括号和方括号
+    script_label = re.finditer(r'[\{\}\[\]]', script_text)
+
+    for item in script_label:
+        if item.group() == '{':
+            # 如果遇到左花括号并且没有其他打开的括号时，记录开始位置
+            if open_braces == 0 and open_brackets == 0:
+                start = item.start()
             open_braces += 1
-        elif char == '}':
-            open_braces -= 1
-
-            # 当大括号完全匹配时，提取出当前的 JSON
-            if open_braces == 0 and start != -1:
-                json_list.append(script_text[start:i + 1])
+        elif item.group() == '}':
+            open_braces = open_braces - 1 if open_braces>0 else open_braces
+            # 当大括号关闭并且没有其他打开的括号时，提取 JSON
+            if open_braces == 0 and open_brackets == 0 and start != -1:
+                json_list.append(script_text[start:item.end()])
                 start = -1  # 重置 start，准备下一个 JSON 对象
-    json_list = json_list if json_list else []
+
+        elif item.group() == '[':
+            # 如果遇到左方括号并且没有其他打开的括号时，记录开始位置
+            if open_braces == 0 and open_brackets == 0:
+                start = item.start()
+            open_brackets += 1
+        elif item.group() == ']':
+            open_brackets = open_brackets- 1 if open_brackets > 0 else open_brackets
+            # 当方括号关闭并且没有其他打开的括号时，提取 JSON
+            if open_braces == 0 and open_brackets == 0 and start != -1:
+                json_list.append(script_text[start:item.end()])
+                start = -1  # 重置 start，准备下一个 JSON 对象
+
     result = []
     if json_list:
         for json_part in json_list:
-            # 将单引号替换为双引号，确保它是有效的 JSON 格式
-            json_part = json_part.replace("'", '"')
-
-            # 尝试解析 JSON
             try:
+                # 尝试直接解析 JSON
                 data = json.loads(json_part)
-                if data:
+                result.append(data)
+            except json.JSONDecodeError:
+                try:
+                    # 将单引号替换为双引号，确保它是有效的 JSON 格式
+                    json_part = json_part.replace("'", '"')
+                    data = json.loads(json_part)
                     result.append(data)
-            except json.JSONDecodeError as e:
-                pass
-                # print("JSON 解析失败:", e)
-    else:
-        # print("未能提取到 JSON")
-        pass
-    return  result  # 如果找不到 JSON，返回空列表
-
+                except json.JSONDecodeError:
+                    pass
+    return result  # 如果找不到 JSON，返回空列表
 
 
 def parse_html(html_content):
@@ -172,6 +184,5 @@ def parse_html(html_content):
         except Exception as e:
             pass
     return  result
-
 
 
